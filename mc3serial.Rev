@@ -1,0 +1,56 @@
+print("Timestamp:", time("year"), time("day"), time("seconds") / 60 / 60)
+seed(0)
+if (args.size() == 0) {
+  minEss = 333
+} else {
+  minEss = args[1]
+}
+maxPSRF = 1.01
+
+neo <- readDiscreteCharacterData("project950.neo.nex")
+trans <- readDiscreteCharacterData("project950.trans.nex")
+logFile = "950_rm_by_nt_ki.log"
+paramFile = "950_rm_by_nt_ki.p.log"
+treeFile = "950_rm_by_nt_ki.trees"
+ckpFile = "950_rm_by_nt_ki.ckp"
+source("rm_by_nt_ki.Rev")
+
+monitors.append( mnModel(filename = logFile, printgen = 36) )
+monitors.append( mnModel(filename = paramFile, printgen = 6, stochasticOnly = TRUE, exclude = ["rel_br_lengths"]) )
+monitors.append( mnFile(filename = treeFile, printgen = 12, phylogeny) )
+
+mymc3 = mcmcmc(
+  mymodel, monitors, moves,
+  nruns = 2,
+  nchains = 8,
+  tuneHeat = TRUE,
+  swapMethod = "both",
+  swapMode = "multiple",
+  combine = "none"
+)
+print("  - Created MCMCMC object")
+
+checkFreq = 50
+
+if (fileExists("950_rm_by_nt_ki_run_1_chain_0.ckp")) {
+  print("  - Initializing from checkpoint")
+  mymc3.initializeFromCheckpoint(ckpFile)
+  runHours = 2
+} else {
+  mymc3.burnin(generations = checkFreq * 30, tuningInterval = checkFreq * 3)
+  runHours = 71
+}
+
+stopping_rules[1] = srMaxTime(runHours, "hours")
+stopping_rules[2] = srMinESS(minEss, paramFile, checkFreq)
+# PSRF requires RevBayes 1.2.5
+stopping_rules[3] = srGelmanRubin(maxPSRF, paramFile, checkFreq)
+
+print("  - Commencing MCMCMC run at",
+      time("year"), time("day"), time("seconds") / 60 / 60)
+print("    Run until ESS >", minEss, "or for", runHours, "hours")
+mymc3.run(rules = stopping_rules, checkpointFile = ckpFile, checkpointInterval = checkFreq)
+
+print("  # # # RUN COMPLETE # # #  ")
+print("Timestamp:", time("year"), time("day"), time("seconds") / 60 / 60)
+q()
